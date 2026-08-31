@@ -1,0 +1,39 @@
+diff --git a/conf/battle/monster.conf b/conf/battle/monster.conf
+index f16026597..d6c80cd3e 100644
+--- a/conf/battle/monster.conf
++++ b/conf/battle/monster.conf
+@@ -120,7 +120,7 @@ monster_active_enable: yes
+ // 0: No
+ // 1: always use the mob_db Name column (english mob name)
+ // 2: always use the mob_db JName column (original Kro mob name)
+-override_mob_names: 0
++override_mob_names: 1
+ 
+ // Monster damage delay rate (Note 2)
+ // This affects the damage delay that is sent to the client and is the base value for the walk delay.
+diff --git a/src/map/clif.cpp b/src/map/clif.cpp
+index 01dc54a49..c79890777 100644
+--- a/src/map/clif.cpp
++++ b/src/map/clif.cpp
+@@ -10072,7 +10072,9 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+ 
+ 				packet.packet_id = HEADER_ZC_ACK_REQNAMEALL;
+ 				packet.gid = bl->id;
+-				safestrncpy( packet.name, md->name, NAME_LENGTH );
++				if( !map_name_utf8_to_cp949( md->name, packet.name, sizeof(packet.name) ) ){
++				        safestrncpy( packet.name, md->name, NAME_LENGTH );
++				}
+ 
+ 				char mobhp[50], *str_p = mobhp;
+ 
+@@ -10100,7 +10102,9 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+ 
+ 				packet.packet_id = HEADER_ZC_ACK_REQNAMEALL_NPC;
+ 				packet.gid = bl->id;
+-				safestrncpy(packet.name, md->name, NAME_LENGTH);
++				if( !map_name_utf8_to_cp949( md->name, packet.name, sizeof(packet.name) ) ){
++				        safestrncpy( packet.name, md->name, NAME_LENGTH );
++				}
+ 
+ #if PACKETVER_MAIN_NUM >= 20180207 || PACKETVER_RE_NUM >= 20171129 || PACKETVER_ZERO_NUM >= 20171130
+ 				const unit_data* ud = unit_bl2ud(bl);

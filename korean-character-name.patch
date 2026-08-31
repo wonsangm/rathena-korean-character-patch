@@ -1,0 +1,237 @@
+diff --git a/conf/char_athena.conf b/conf/char_athena.conf
+index 726dd3077..61cd12b2a 100644
+--- a/conf/char_athena.conf
++++ b/conf/char_athena.conf
+@@ -157,7 +157,7 @@ name_ignoring_case: no
+ // 0: no restriction (default)
+ // 1: only letters/symbols in 'char_name_letters' option.
+ // 2: Letters/symbols in 'char_name_letters' option are forbidden. All others are possibles.
+-char_name_option: 1
++char_name_option: 0
+ 
+ // Set the letters/symbols that you want use with the 'char_name_option' option.
+ // Note: Don't add spaces unless you mean to add 'space' to the list.
+diff --git a/src/char/char.cpp b/src/char/char.cpp
+index 493819122..ede1e558e 100644
+--- a/src/char/char.cpp
++++ b/src/char/char.cpp
+@@ -11,6 +11,7 @@
+ #include <ctime>
+ #include <memory>
+ #include <unordered_map>
++#include <iconv.h>
+ 
+ #include <common/cbasetypes.hpp>
+ #include <common/cli.hpp>
+@@ -44,6 +45,33 @@
+ using namespace rathena;
+ using namespace rathena::server_character;
+ 
++
++// UTF-8 -> CP949 character name conversion
++static bool char_name_utf8_to_cp949(const char* src, char* dst, size_t dst_size)
++{
++        if( src == nullptr || dst == nullptr || dst_size == 0 )
++                return false;
++
++        iconv_t cd = iconv_open("CP949", "UTF-8");
++        if( cd == (iconv_t)-1 )
++                return false;
++
++        size_t in_left = strnlen(src, NAME_LENGTH);
++        size_t out_left = dst_size - 1;
++
++        char* in_buf = const_cast<char*>(src);
++        char* out_buf = dst;
++
++        size_t result = iconv(cd, &in_buf, &in_left, &out_buf, &out_left);
++
++        *out_buf = '\0';
++
++        iconv_close(cd);
++
++        return result != (size_t)-1;
++}
++
++
+ //definition of exported var declared in header
+ int32 login_fd=-1; //login file descriptor
+ int32 char_fd=-1; //char file descriptor
+@@ -1824,7 +1852,8 @@ int32 char_mmo_char_tobuf( CHARACTER_INFO& info, mmo_charstatus& p ){
+ 	info.accessory3 = p.head_mid;
+ 	info.headpalette = p.hair_color;
+ 	info.bodypalette = p.clothes_color;
+-	safestrncpy( info.name, p.name, NAME_LENGTH );
++        if( !char_name_utf8_to_cp949( p.name, info.name, sizeof(info.name) ) )
++                safestrncpy( info.name, p.name, sizeof(info.name) );
+ 	info.Str = (uint8)u16min( p.str, UINT8_MAX );
+ 	info.Agi = (uint8)u16min( p.agi, UINT8_MAX );
+ 	info.Vit = (uint8)u16min( p.vit, UINT8_MAX );
+diff --git a/src/char/char_clif.cpp b/src/char/char_clif.cpp
+index 319603266..6774cb80b 100644
+--- a/src/char/char_clif.cpp
++++ b/src/char/char_clif.cpp
+@@ -8,6 +8,7 @@
+ #include <memory>
+ #include <unordered_map>
+ #include <vector>
++#include <iconv.h>
+ 
+ #include <common/malloc.hpp>
+ #include <common/mapindex.hpp>
+@@ -29,6 +30,33 @@
+ 
+ using namespace rathena;
+ 
++
++// CP949 -> UTF-8 character name conversion
++static bool char_name_cp949_to_utf8(const char* src, char* dst, size_t dst_size)
++{
++        if( src == nullptr || dst == nullptr || dst_size == 0 )
++                return false;
++
++        iconv_t cd = iconv_open("UTF-8", "CP949");
++        if( cd == (iconv_t)-1 )
++                return false;
++
++        size_t in_left = strnlen(src, NAME_LENGTH);
++        size_t out_left = dst_size - 1;
++
++        char* in_buf = const_cast<char*>(src);
++        char* out_buf = dst;
++
++        size_t result = iconv(cd, &in_buf, &in_left, &out_buf, &out_left);
++
++        *out_buf = '\0';
++
++        iconv_close(cd);
++
++        return result != (size_t)-1;
++}
++
++
+ std::vector<struct s_point_str> accessible_maps{
+ 	s_point_str{ MAP_PRONTERA, 116, 73 },
+ 	s_point_str{ MAP_PAYON, 162, 58 },
+@@ -1265,7 +1293,10 @@ bool chclif_parse_createnewchar( int32 fd, struct char_session_data& sd ){
+ 	const PACKET_CH_MAKE_CHAR* p = reinterpret_cast<PACKET_CH_MAKE_CHAR*>( RFIFOP( fd, 0 ) );
+ 
+ 	// Sent values
+-	safestrncpy( name, p->name, NAME_LENGTH );
++        if( !char_name_cp949_to_utf8( p->name, name, sizeof(name) ) ){
++                chclif_createnewchar_refuse( fd, -2 );
++                return true;
++        }
+ 	slot = p->slot;
+ 	hair_color = p->hair_color;
+ 	hair_style = p->hair_style;
+diff --git a/src/map/clif.cpp b/src/map/clif.cpp
+index 83060544d..01dc54a49 100644
+--- a/src/map/clif.cpp
++++ b/src/map/clif.cpp
+@@ -10,6 +10,7 @@
+ #include <cstring>
+ #include <ctime>
+ #include <unordered_set>
++#include <iconv.h>
+ 
+ #include <common/cbasetypes.hpp>
+ #include <common/conf.hpp>
+@@ -61,6 +62,29 @@
+ 
+ using namespace rathena;
+ 
++static bool map_name_utf8_to_cp949(const char* src, char* dst, size_t dst_size)
++{
++    if (src == nullptr || dst == nullptr || dst_size == 0)
++        return false;
++
++    iconv_t cd = iconv_open("CP949", "UTF-8");
++    if (cd == (iconv_t)-1)
++        return false;
++
++    size_t in_left = strnlen(src, NAME_LENGTH);
++    size_t out_left = dst_size - 1;
++
++    char* in_buf = const_cast<char*>(src);
++    char* out_buf = dst;
++
++    size_t result = iconv(cd, &in_buf, &in_left, &out_buf, &out_left);
++    *out_buf = '\0';
++
++    iconv_close(cd);
++    return result != (size_t)-1;
++}
++
++
+ static inline uint32 client_tick( t_tick tick ){
+ 	return (uint32)tick;
+ }
+@@ -4697,14 +4721,20 @@ void clif_chat_role( const chat_data& cd, const map_session_data& sd ){
+ ///     0 = left
+ ///     1 = kicked
+ void clif_chat_leave( const chat_data& cd, const map_session_data& sd, bool kicked ){
+-	PACKET_ZC_MEMBER_EXIT p = {};
++        PACKET_ZC_MEMBER_EXIT p = {};
+ 
+-	p.packetType = HEADER_ZC_MEMBER_EXIT;
+-	p.count = cd.users - 1;
+-	safestrncpy( p.name, sd.status.name, sizeof( p.name ) );
+-	p.kicked = kicked;
++        p.packetType = HEADER_ZC_MEMBER_EXIT;
++        p.count = cd.users - 1;
+ 
+-	clif_send( &p, sizeof( p ), &sd, CHAT );
++        char cp949_name[NAME_LENGTH] = "";
++        if( !map_name_utf8_to_cp949( sd.status.name, cp949_name, sizeof( cp949_name ) ) ){
++                safestrncpy( cp949_name, sd.status.name, NAME_LENGTH );
++        }
++        safestrncpy( p.name, cp949_name, sizeof( p.name ) );
++
++        p.kicked = kicked;
++
++        clif_send( &p, sizeof( p ), &sd, CHAT );
+ }
+ 
+ 
+@@ -9949,7 +9979,9 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+ 				return;
+ 			}
+ 
+-			safestrncpy( packet.name, sd->status.name, NAME_LENGTH );
++			if( !map_name_utf8_to_cp949( sd->status.name, packet.name, sizeof(packet.name) ) ){
++                                safestrncpy( packet.name, sd->status.name, NAME_LENGTH );
++                        }
+ 
+ 			party_data *p = nullptr;
+ 
+@@ -10446,6 +10478,7 @@ static bool clif_process_message(map_session_data* sd, bool whisperFormat, char*
+ 	uint16 packetLength, inputLength;
+ 	const char *input, *name, *message;
+ 	size_t nameLength, messageLength;
++        char cp949_name[NAME_LENGTH] = "";
+ 
+ 	fd = sd->fd;
+ 
+@@ -10487,7 +10520,11 @@ static bool clif_process_message(map_session_data* sd, bool whisperFormat, char*
+ 		// name and message are separated by ' : '
+ 		size_t separatorLength = strnlen( separator, NAME_LENGTH );
+ 
+-		nameLength = strnlen( sd->status.name, NAME_LENGTH - 1 ); // name length (w/o zero byte)
++                if( !map_name_utf8_to_cp949( sd->status.name, cp949_name, sizeof(cp949_name) ) ){
++                        safestrncpy( cp949_name, sd->status.name, NAME_LENGTH );
++                }
++
++		nameLength = strnlen( cp949_name, NAME_LENGTH - 1 ); // name length (w/o zero byte)
+ 		
+ 		// check if there's enough data provided
+ 		if( inputLength < nameLength + separatorLength + 1 ){
+@@ -10498,7 +10535,7 @@ static bool clif_process_message(map_session_data* sd, bool whisperFormat, char*
+ 		name = input;
+ 
+ 		// validate name
+-		if( strncmp( name, sd->status.name, nameLength ) || // the text must start with the speaker's name
++		if( strncmp( name, cp949_name, nameLength ) || // the text must start with the speaker's name
+ 			strncmp( name + nameLength, separator, separatorLength ) ) // followed by the separator
+ 		{
+ 			//Hacked message, or infamous "client desynch" issue where they pick one char while loading another.
