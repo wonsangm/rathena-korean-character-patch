@@ -12,10 +12,29 @@ index f16026597..d6c80cd3e 100644
  // Monster damage delay rate (Note 2)
  // This affects the damage delay that is sent to the client and is the base value for the walk delay.
 diff --git a/src/map/clif.cpp b/src/map/clif.cpp
-index 01dc54a49..c79890777 100644
+index 01dc54a49..0bfec65cc 100644
 --- a/src/map/clif.cpp
 +++ b/src/map/clif.cpp
-@@ -10072,7 +10072,9 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+@@ -1469,7 +1469,17 @@ static void clif_set_unit_walking( const block_list& bl, const map_session_data*
+ #endif
+ /* Might be earlier, this is when the named item bug began */
+ #if PACKETVER >= 20131223
+-	safestrncpy(p.name, status_get_name( bl ), NAME_LENGTH);
++        if( bl.type == BL_MOB ){
++                const mob_data* md = static_cast<const mob_data*>( &bl );
++                char cp949_name[NAME_LENGTH] = {};
++
++                if( !map_name_utf8_to_cp949( md->name, cp949_name, sizeof(cp949_name) ) )
++                        safestrncpy( cp949_name, md->name, NAME_LENGTH );
++
++                safestrncpy( p.name, cp949_name, NAME_LENGTH );
++        }else{
++                safestrncpy( p.name, status_get_name( bl ), NAME_LENGTH );
++        }
+ #endif
+ 
+ 	clif_send( &p, sizeof(p), tsd ? tsd : &bl, target );
+@@ -10072,7 +10082,9 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
  
  				packet.packet_id = HEADER_ZC_ACK_REQNAMEALL;
  				packet.gid = bl->id;
@@ -26,7 +45,7 @@ index 01dc54a49..c79890777 100644
  
  				char mobhp[50], *str_p = mobhp;
  
-@@ -10100,7 +10102,9 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+@@ -10100,7 +10112,9 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
  
  				packet.packet_id = HEADER_ZC_ACK_REQNAMEALL_NPC;
  				packet.gid = bl->id;
