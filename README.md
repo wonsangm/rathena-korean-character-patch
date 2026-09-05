@@ -121,6 +121,7 @@ git apply korean-monster-cp949.patch
 korean-character-name.patch
 korean-monster-cp949.patch
 korean-mobinfo-cp949.patch
+korean-long-monster-name.patch
 ```
 
 개인 서버의 DB 접속 정보와 비밀번호 등의 보안 정보는 저장소에 포함하지 않습니다.
@@ -145,3 +146,26 @@ korean-mobinfo-cp949.patch
 적용:
 
 `git apply korean-mobinfo-cp949.patch`
+
+
+## 긴 한글 몬스터명 지원
+
+### `korean-long-monster-name.patch`
+
+UTF-8에서 23바이트를 초과하는 한글 몬스터명이 `NAME_LENGTH` 제한으로 잘리거나 깨지는 문제를 수정합니다.
+
+주요 변경사항:
+
+- 기존 `NAME_LENGTH`는 변경하지 않음
+- 몬스터 내부 이름용 `MOB_NAME_LENGTH`를 64바이트로 분리
+- `Name` / `JapaneseName`을 최대 64바이트 내부 버퍼에 보관
+- 클라이언트 출력 직전에 UTF-8 전체 몬스터명을 CP949로 변환
+- 캐릭터명 및 기존 클라이언트 패킷의 `NAME_LENGTH`에는 영향 없음
+
+변경 대상:
+
+`src/common/mmo.hpp`, `src/map/map.hpp`, `src/map/mob.hpp`, `src/map/mob.cpp`, `src/map/script.cpp`, `src/map/clif.cpp`
+
+적용:
+
+`git apply korean-long-monster-name.patch`
