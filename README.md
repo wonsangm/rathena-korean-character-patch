@@ -9,8 +9,15 @@ rAthena 기반 Ragnarok Online 개인 서버 커스텀 저장소입니다.
 ## 현재 기준
 
 * rAthena 기반
-* Ragnarok Online 클라이언트: **2026-02-11**
+* rAthena commit: `e985006171d2eb320ee512a653f4c83aea3d81b6`
+* 검증 환경: Linux / Ubuntu (Windows / Visual Studio는 미검증)
+* Ragnarok Online 클라이언트: **2026-02-19**
 * 한글 캐릭터명 지원
+* 검증 완료: 한글 캐릭터 생성 / map-server 접속 / 캐릭터명 CP949 출력
+* 검증 완료: 채팅 / 채팅방 입장·퇴장
+* 검증 완료: 한글 몬스터명 / 이동 후 이름 유지 / @mobinfo
+* 검증 완료: 23바이트 초과 한글 몬스터명 / @monster 소환
+
 * CP949 ↔ UTF-8 변환
 * MariaDB / utf8mb4
 
@@ -39,6 +46,16 @@ default_codepage: utf8mb4
 ```
 
 UTF-8 문자 저장을 위해 설정.
+
+## 패치 적용 순서
+
+1. `korean-character-name.patch`
+2. `korean-monster-cp949.patch`
+3. `korean-mobinfo-cp949.patch`
+4. `korean-long-monster-name.patch`
+
+각 패치는 적용 전에 `git apply --check 패치파일명`으로 확인합니다.
+`korean-long-monster-name.patch`는 `korean-monster-cp949.patch` 적용 후 사용하는 것을 권장합니다.
 
 ## rAthena 업데이트 시
 
