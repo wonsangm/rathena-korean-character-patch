@@ -1,0 +1,68 @@
+--- a/src/map/atcommand.cpp
++++ b/src/map/atcommand.cpp
+@@ -5,6 +5,7 @@
+ 
+ #include <cmath>
+ #include <cstdlib>
++#include <iconv.h>
+ #include <set>
+ #include <unordered_map>
+ 
+@@ -57,6 +58,28 @@
+ 
+ using namespace rathena;
+ 
++static bool atcommand_utf8_to_cp949(const char* src, char* dst, size_t dst_size)
++{
++    if (src == nullptr || dst == nullptr || dst_size == 0)
++        return false;
++
++    iconv_t cd = iconv_open("CP949", "UTF-8");
++    if (cd == (iconv_t)-1)
++        return false;
++
++    size_t in_left = strlen(src);
++    size_t out_left = dst_size - 1;
++
++    char* in_buf = const_cast<char*>(src);
++    char* out_buf = dst;
++
++    size_t result = iconv(cd, &in_buf, &in_left, &out_buf, &out_left);
++    *out_buf = '\0';
++
++    iconv_close(cd);
++    return result != (size_t)-1;
++}
++
+ #define ATCOMMAND_LENGTH 50
+ #define ACMD_FUNC(x) static int32 atcommand_ ## x (const int32 fd, map_session_data* sd, const char* command, const char* message)
+ 
+@@ -8128,11 +8151,23 @@
+ 		}
+ #endif
+ 		// stats
+-		if( mob->get_bosstype() == BOSSTYPE_MVP )
+-			sprintf(atcmd_output, msg_txt(sd,1240), mob->name.c_str(), mob->jname.c_str(), mob->sprite.c_str(), mob->id); // MVP Monster: '%s'/'%s'/'%s' (%d)
+-		else
+-			sprintf(atcmd_output, msg_txt(sd,1241), mob->name.c_str(), mob->jname.c_str(), mob->sprite.c_str(), mob->id); // Monster: '%s'/'%s'/'%s' (%d)
+-		clif_displaymessage(fd, atcmd_output);
++                char mob_name_cp949[CHAT_SIZE_MAX] = {};
++                char mob_jname_cp949[CHAT_SIZE_MAX] = {};
++
++                const char* mob_name_out = mob->name.c_str();
++                const char* mob_jname_out = mob->jname.c_str();
++
++                if( atcommand_utf8_to_cp949( mob->name.c_str(), mob_name_cp949, sizeof(mob_name_cp949) ) )
++                        mob_name_out = mob_name_cp949;
++
++                if( atcommand_utf8_to_cp949( mob->jname.c_str(), mob_jname_cp949, sizeof(mob_jname_cp949) ) )
++                        mob_jname_out = mob_jname_cp949;
++
++                if( mob->get_bosstype() == BOSSTYPE_MVP )
++                        sprintf(atcmd_output, msg_txt(sd,1240), mob_name_out, mob_jname_out, mob->sprite.c_str(), mob->id);
++                else
++                        sprintf(atcmd_output, msg_txt(sd,1241), mob_name_out, mob_jname_out, mob->sprite.c_str(), mob->id);
++                clif_displaymessage(fd, atcmd_output);
+ 		sprintf(atcmd_output, msg_txt(sd,1242), mob->lv, mob->status.max_hp, base_exp, job_exp, MOB_HIT(mob), MOB_FLEE(mob)); //  Lv:%d  HP:%d  Base EXP:%llu  Job EXP:%llu  HIT:%d  FLEE:%d
+ 		clif_displaymessage(fd, atcmd_output);
+ 		sprintf(atcmd_output, msg_txt(sd,1243), //  DEF:%d  MDEF:%d  STR:%d  AGI:%d  VIT:%d  INT:%d  DEX:%d  LUK:%d

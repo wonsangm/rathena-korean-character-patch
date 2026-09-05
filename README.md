@@ -120,6 +120,28 @@ git apply korean-monster-cp949.patch
 ```text
 korean-character-name.patch
 korean-monster-cp949.patch
+korean-mobinfo-cp949.patch
 ```
 
 개인 서버의 DB 접속 정보와 비밀번호 등의 보안 정보는 저장소에 포함하지 않습니다.
+
+
+## @mobinfo 한글 몬스터명 지원
+
+### `korean-mobinfo-cp949.patch`
+
+한국어 클라이언트에서 `@mobinfo` 명령어 사용 시 한글 몬스터명이 깨져서 표시되는 문제를 수정합니다.
+
+주요 변경사항:
+
+- `src/map/atcommand.cpp`의 `@mobinfo` 출력 처리
+- 몬스터 `Name` / `JapaneseName`을 UTF-8 → CP949로 변환하여 출력
+- 긴 UTF-8 몬스터명을 불필요하게 `NAME_LENGTH`로 제한하지 않고 변환
+
+변경 대상:
+
+`src/map/atcommand.cpp`
+
+적용:
+
+`git apply korean-mobinfo-cp949.patch`
