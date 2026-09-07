@@ -1,0 +1,672 @@
+diff --git a/conf/battle/monster.conf b/conf/battle/monster.conf
+index f1602659726b96c8218ae500f7ce41d5e86ebd28..d6c80cd3e5bf230a9b243c0e1b0cbbfbb86f8c89 100644
+--- a/conf/battle/monster.conf
++++ b/conf/battle/monster.conf
+@@ -120,7 +120,7 @@ monster_active_enable: yes
+ // 0: No
+ // 1: always use the mob_db Name column (english mob name)
+ // 2: always use the mob_db JName column (original Kro mob name)
+-override_mob_names: 0
++override_mob_names: 1
+ 
+ // Monster damage delay rate (Note 2)
+ // This affects the damage delay that is sent to the client and is the base value for the walk delay.
+diff --git a/conf/char_athena.conf b/conf/char_athena.conf
+index 726dd307799457494f5ae34d13f16a16fa70898d..61cd12b2ae557e67a4bdc408cdef119655f8cb5b 100644
+--- a/conf/char_athena.conf
++++ b/conf/char_athena.conf
+@@ -157,7 +157,7 @@ name_ignoring_case: no
+ // 0: no restriction (default)
+ // 1: only letters/symbols in 'char_name_letters' option.
+ // 2: Letters/symbols in 'char_name_letters' option are forbidden. All others are possibles.
+-char_name_option: 1
++char_name_option: 0
+ 
+ // Set the letters/symbols that you want use with the 'char_name_option' option.
+ // Note: Don't add spaces unless you mean to add 'space' to the list.
+diff --git a/conf/inter_athena.conf b/conf/inter_athena.conf
+index c2e84994362f980b86fcd9764e4905004ef5b8ea..69c2dbe813d4bd000e3831accc2ad149533e4bfd 100644
+--- a/conf/inter_athena.conf
++++ b/conf/inter_athena.conf
+@@ -23,7 +23,7 @@ emblem_transparency_limit: 80
+ 
+ // You can specify the codepage to use in your MySQL tables here.
+ // (Note that this feature requires MySQL 4.1+)
+-//default_codepage:
++default_codepage: utf8mb4
+ 
+ // For IPs, ideally under linux, you want to use localhost instead of 127.0.0.1
+ // Under windows, you want to use 127.0.0.1.  If you see a message like
+diff --git a/src/char/char.cpp b/src/char/char.cpp
+index 493819122c83103e4ad5d6fb2f166d11013ee4aa..ede1e558e67e446d4ce78307511e92a52fcd478e 100644
+--- a/src/char/char.cpp
++++ b/src/char/char.cpp
+@@ -11,6 +11,7 @@
+ #include <ctime>
+ #include <memory>
+ #include <unordered_map>
++#include <iconv.h>
+ 
+ #include <common/cbasetypes.hpp>
+ #include <common/cli.hpp>
+@@ -44,6 +45,33 @@
+ using namespace rathena;
+ using namespace rathena::server_character;
+ 
++
++// UTF-8 -> CP949 character name conversion
++static bool char_name_utf8_to_cp949(const char* src, char* dst, size_t dst_size)
++{
++        if( src == nullptr || dst == nullptr || dst_size == 0 )
++                return false;
++
++        iconv_t cd = iconv_open("CP949", "UTF-8");
++        if( cd == (iconv_t)-1 )
++                return false;
++
++        size_t in_left = strnlen(src, NAME_LENGTH);
++        size_t out_left = dst_size - 1;
++
++        char* in_buf = const_cast<char*>(src);
++        char* out_buf = dst;
++
++        size_t result = iconv(cd, &in_buf, &in_left, &out_buf, &out_left);
++
++        *out_buf = '\0';
++
++        iconv_close(cd);
++
++        return result != (size_t)-1;
++}
++
++
+ //definition of exported var declared in header
+ int32 login_fd=-1; //login file descriptor
+ int32 char_fd=-1; //char file descriptor
+@@ -1824,7 +1852,8 @@ int32 char_mmo_char_tobuf( CHARACTER_INFO& info, mmo_charstatus& p ){
+ 	info.accessory3 = p.head_mid;
+ 	info.headpalette = p.hair_color;
+ 	info.bodypalette = p.clothes_color;
+-	safestrncpy( info.name, p.name, NAME_LENGTH );
++        if( !char_name_utf8_to_cp949( p.name, info.name, sizeof(info.name) ) )
++                safestrncpy( info.name, p.name, sizeof(info.name) );
+ 	info.Str = (uint8)u16min( p.str, UINT8_MAX );
+ 	info.Agi = (uint8)u16min( p.agi, UINT8_MAX );
+ 	info.Vit = (uint8)u16min( p.vit, UINT8_MAX );
+diff --git a/src/char/char_clif.cpp b/src/char/char_clif.cpp
+index 31960326610a1b739e9ab9f040d4e51f9eb1cab4..6774cb80b6a1298240863a6257e7695f522e8c76 100644
+--- a/src/char/char_clif.cpp
++++ b/src/char/char_clif.cpp
+@@ -8,6 +8,7 @@
+ #include <memory>
+ #include <unordered_map>
+ #include <vector>
++#include <iconv.h>
+ 
+ #include <common/malloc.hpp>
+ #include <common/mapindex.hpp>
+@@ -29,6 +30,33 @@
+ 
+ using namespace rathena;
+ 
++
++// CP949 -> UTF-8 character name conversion
++static bool char_name_cp949_to_utf8(const char* src, char* dst, size_t dst_size)
++{
++        if( src == nullptr || dst == nullptr || dst_size == 0 )
++                return false;
++
++        iconv_t cd = iconv_open("UTF-8", "CP949");
++        if( cd == (iconv_t)-1 )
++                return false;
++
++        size_t in_left = strnlen(src, NAME_LENGTH);
++        size_t out_left = dst_size - 1;
++
++        char* in_buf = const_cast<char*>(src);
++        char* out_buf = dst;
++
++        size_t result = iconv(cd, &in_buf, &in_left, &out_buf, &out_left);
++
++        *out_buf = '\0';
++
++        iconv_close(cd);
++
++        return result != (size_t)-1;
++}
++
++
+ std::vector<struct s_point_str> accessible_maps{
+ 	s_point_str{ MAP_PRONTERA, 116, 73 },
+ 	s_point_str{ MAP_PAYON, 162, 58 },
+@@ -1265,7 +1293,10 @@ bool chclif_parse_createnewchar( int32 fd, struct char_session_data& sd ){
+ 	const PACKET_CH_MAKE_CHAR* p = reinterpret_cast<PACKET_CH_MAKE_CHAR*>( RFIFOP( fd, 0 ) );
+ 
+ 	// Sent values
+-	safestrncpy( name, p->name, NAME_LENGTH );
++        if( !char_name_cp949_to_utf8( p->name, name, sizeof(name) ) ){
++                chclif_createnewchar_refuse( fd, -2 );
++                return true;
++        }
+ 	slot = p->slot;
+ 	hair_color = p->hair_color;
+ 	hair_style = p->hair_style;
+diff --git a/src/common/mmo.hpp b/src/common/mmo.hpp
+index 121f2b540857018a84b85d2e4ed40d873a3ecdac..660c6794b12a07ed6fe12bdb622ba5fbfc57be0b 100644
+--- a/src/common/mmo.hpp
++++ b/src/common/mmo.hpp
+@@ -152,6 +152,9 @@ const t_itemid WEDDING_RING_F = 2635;
+ //For character names, title names, guilds, maps, etc.
+ //Includes null-terminator as it is the length of the array.
+ #define NAME_LENGTH (23 + 1)
++// Monster names are stored internally as UTF-8 and may require more bytes
++// than the client-side NAME_LENGTH before conversion to CP949.
++#define MOB_NAME_LENGTH 64
+ #define PASSWD_LENGTH (32 + 1)
+ //NPC names can be longer than it's displayed on client (NAME_LENGTH).
+ #define NPC_NAME_LENGTH 50
+diff --git a/src/map/clif.cpp b/src/map/clif.cpp
+index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f12614486ef5e7a9 100644
+--- a/src/map/clif.cpp
++++ b/src/map/clif.cpp
+@@ -10,6 +10,8 @@
+ #include <cstring>
+ #include <ctime>
+ #include <unordered_set>
++#include <iconv.h>
++#include <cerrno>
+ 
+ #include <common/cbasetypes.hpp>
+ #include <common/conf.hpp>
+@@ -61,6 +63,37 @@
+ 
+ using namespace rathena;
+ 
++static bool map_name_utf8_to_cp949(const char* src, char* dst, size_t dst_size)
++{
++    if (src == nullptr || dst == nullptr || dst_size == 0)
++        return false;
++
++    iconv_t cd = iconv_open("CP949", "UTF-8");
++    if (cd == (iconv_t)-1)
++        return false;
++
++    size_t in_left = strlen(src);
++    size_t out_left = dst_size - 1;
++
++    char* in_buf = const_cast<char*>(src);
++    char* out_buf = dst;
++
++    errno = 0;
++    size_t result = iconv(cd, &in_buf, &in_left, &out_buf, &out_left);
++    int saved_errno = errno;
++
++    *out_buf = '\0';
++    iconv_close(cd);
++
++    if (result != (size_t)-1)
++        return true;
++
++    // Fixed-size client fields are commonly 24 bytes including NUL.
++    // E2BIG means iconv filled the buffer up to a complete CP949 character.
++    return saved_errno == E2BIG;
++}
++
++
+ static inline uint32 client_tick( t_tick tick ){
+ 	return (uint32)tick;
+ }
+@@ -1445,7 +1478,17 @@ static void clif_set_unit_walking( const block_list& bl, const map_session_data*
+ #endif
+ /* Might be earlier, this is when the named item bug began */
+ #if PACKETVER >= 20131223
+-	safestrncpy(p.name, status_get_name( bl ), NAME_LENGTH);
++        if( bl.type == BL_MOB ){
++                const mob_data* md = static_cast<const mob_data*>( &bl );
++                char cp949_name[NAME_LENGTH] = {};
++
++                if( !map_name_utf8_to_cp949( md->name, cp949_name, sizeof(cp949_name) ) )
++                        safestrncpy( cp949_name, md->name, NAME_LENGTH );
++
++                safestrncpy( p.name, cp949_name, NAME_LENGTH );
++        }else{
++                safestrncpy( p.name, status_get_name( bl ), NAME_LENGTH );
++        }
+ #endif
+ 
+ 	clif_send( &p, sizeof(p), tsd ? tsd : &bl, target );
+@@ -2470,12 +2513,18 @@ void clif_parse_NPCMarketPurchase(int32 fd, map_session_data *sd) {
+ void clif_scriptmes( const map_session_data& sd, uint32 npcid, const char *mes ){
+ 	PACKET_ZC_SAY_DIALOG* p = reinterpret_cast<PACKET_ZC_SAY_DIALOG*>( packet_buffer );
+ 
+-	int16 length = (int16)( strlen( mes ) + 1 );
++	std::string cp949_mes( strlen( mes ) + 1, '\0' );
++	const char* send_mes = mes;
++
++	if( map_name_utf8_to_cp949( mes, cp949_mes.data(), cp949_mes.size() ) )
++		send_mes = cp949_mes.c_str();
++
++	int16 length = (int16)( strlen( send_mes ) + 1 );
+ 
+ 	p->PacketType = HEADER_ZC_SAY_DIALOG;
+ 	p->PacketLength = sizeof( *p ) + length;
+ 	p->NpcID = npcid;
+-	safestrncpy( p->message, mes, length );
++	safestrncpy( p->message, send_mes, length );
+ 
+ 	clif_send( p, p->PacketLength, &sd, SELF );
+ }
+@@ -2629,21 +2678,27 @@ void clif_sendfakenpc( map_session_data& sd, uint32 npcid ){
+ /// TODO investigate behavior of other windows [FlavioJS]
+ void clif_scriptmenu( map_session_data& sd, uint32 npcid, const char* mes ){
+ 	block_list *bl = nullptr;
+-	
++
+ 	if (!sd.state.using_fake_npc && (npcid == fake_nd->id || ((bl = map_id2bl(npcid)) && (bl->m!=sd.m ||
+ 	   bl->x<sd.x-AREA_SIZE-1 || bl->x>sd.x+AREA_SIZE+1 ||
+ 	   bl->y<sd.y-AREA_SIZE-1 || bl->y>sd.y+AREA_SIZE+1))))
+ 	   clif_sendfakenpc( sd, npcid );
+ 
++	std::string cp949_mes( strlen( mes ) + 1, '\0' );
++	const char* send_mes = mes;
++
++	if( map_name_utf8_to_cp949( mes, cp949_mes.data(), cp949_mes.size() ) )
++		send_mes = cp949_mes.c_str();
++
+ 	// String length + 1 byte for zero termination
+-	size_t mes_length = strlen( mes ) + 1;
++	size_t mes_length = strlen( send_mes ) + 1;
+ 
+ 	PACKET_ZC_MENU_LIST* packet = reinterpret_cast<PACKET_ZC_MENU_LIST*>( packet_buffer );
+ 
+ 	packet->packetType = HEADER_ZC_MENU_LIST;
+ 	packet->packetLength = sizeof( PACKET_ZC_MENU_LIST );
+ 	packet->npcId = npcid;
+-	safestrncpy( packet->menu, mes, mes_length );
++	safestrncpy( packet->menu, send_mes, mes_length );
+ 	packet->packetLength += static_cast<decltype(packet->packetLength)>( mes_length );
+ 
+ 	clif_send( packet, packet->packetLength, &sd, SELF );
+@@ -4697,14 +4752,20 @@ void clif_chat_role( const chat_data& cd, const map_session_data& sd ){
+ ///     0 = left
+ ///     1 = kicked
+ void clif_chat_leave( const chat_data& cd, const map_session_data& sd, bool kicked ){
+-	PACKET_ZC_MEMBER_EXIT p = {};
++        PACKET_ZC_MEMBER_EXIT p = {};
+ 
+-	p.packetType = HEADER_ZC_MEMBER_EXIT;
+-	p.count = cd.users - 1;
+-	safestrncpy( p.name, sd.status.name, sizeof( p.name ) );
+-	p.kicked = kicked;
++        p.packetType = HEADER_ZC_MEMBER_EXIT;
++        p.count = cd.users - 1;
+ 
+-	clif_send( &p, sizeof( p ), &sd, CHAT );
++        char cp949_name[NAME_LENGTH] = "";
++        if( !map_name_utf8_to_cp949( sd.status.name, cp949_name, sizeof( cp949_name ) ) ){
++                safestrncpy( cp949_name, sd.status.name, NAME_LENGTH );
++        }
++        safestrncpy( p.name, cp949_name, sizeof( p.name ) );
++
++        p.kicked = kicked;
++
++        clif_send( &p, sizeof( p ), &sd, CHAT );
+ }
+ 
+ 
+@@ -6672,12 +6733,18 @@ void clif_displaymessage(const int32 fd, const char* mes)
+ 		line = strtok(message, "\n");
+ 
+ 		while(line != nullptr) {
++			char cp949_line[CHAT_SIZE_MAX] = {};
++			const char* send_line = line;
++
++			if( map_name_utf8_to_cp949( line, cp949_line, sizeof(cp949_line) ) )
++				send_line = cp949_line;
++
+ #if PACKETVER == 20141022
+ 		/** for some reason game client crashes depending on message pattern (only for this packet) **/
+ 		/** so we redirect to ZC_NPC_CHAT **/
+ 		//clif_messagecolor(sd, color_table[COLOR_DEFAULT], mes, false, SELF);
+ 			unsigned long color = (color_table[COLOR_DEFAULT] & 0x0000FF) << 16 | (color_table[COLOR_DEFAULT] & 0x00FF00) | (color_table[COLOR_DEFAULT] & 0xFF0000) >> 16; // RGB to BGR
+-			uint16 len = strnlen(line, CHAT_SIZE_MAX);
++			uint16 len = strnlen(send_line, CHAT_SIZE_MAX);
+ 
+ 			if (len > 0) { 
+ 				WFIFOHEAD(fd, 13 + len);
+@@ -6685,20 +6752,20 @@ void clif_displaymessage(const int32 fd, const char* mes)
+ 				WFIFOW(fd, 2) = 13 + len;
+ 				WFIFOL(fd, 4) = 0;
+ 				WFIFOL(fd, 8) = color;
+-				safestrncpy(WFIFOCP(fd, 12), line, len + 1);
++				safestrncpy(WFIFOCP(fd, 12), send_line, len + 1);
+ 				WFIFOSET(fd, WFIFOW(fd, 2));
+ 			}
+ #else
+ 			// Limit message to 255+1 characters (otherwise it causes a buffer overflow in the client)
+ 			int16 len;
+ 
+-			len = static_cast<decltype(len)>( strnlen(line, CHAT_SIZE_MAX) );
++			len = static_cast<decltype(len)>( strnlen(send_line, CHAT_SIZE_MAX) );
+ 
+ 			if (len > 0) { // don't send a void message (it's not displaying on the client chat). @help can send void line.
+ 				WFIFOHEAD(fd, 5 + len);
+ 				WFIFOW(fd,0) = 0x8e;
+ 				WFIFOW(fd,2) = 5 + len; // 4 + len + nullptr teminate
+-				safestrncpy(WFIFOCP(fd,4), line, len + 1);
++				safestrncpy(WFIFOCP(fd,4), send_line, len + 1);
+ 				WFIFOSET(fd, 5 + len);
+ 			}
+ #endif
+@@ -6716,6 +6783,13 @@ void clif_broadcast( const block_list* bl, const char* mes, size_t len, int32 ty
+ 	if (len < 2)
+ 		return;
+ 
++	std::string cp949_mes( strlen( mes ) + 1, '\0' );
++
++	if( map_name_utf8_to_cp949( mes, cp949_mes.data(), cp949_mes.size() ) ){
++		mes = cp949_mes.c_str();
++		len = strlen( mes ) + 1;
++	}
++
+ 	PACKET_ZC_BROADCAST* p = reinterpret_cast<PACKET_ZC_BROADCAST*>( packet_buffer );
+ 
+ 	p->packetType = HEADER_ZC_BROADCAST;
+@@ -6783,6 +6857,13 @@ void clif_broadcast2(const block_list* bl, const char* mes, size_t len, unsigned
+ 	if (len < 2)
+ 		return;
+ 
++	std::string cp949_mes( strlen( mes ) + 1, '\0' );
++
++	if( map_name_utf8_to_cp949( mes, cp949_mes.data(), cp949_mes.size() ) ){
++		mes = cp949_mes.c_str();
++		len = strlen( mes ) + 1;
++	}
++
+ 	PACKET_ZC_BROADCAST2* p = reinterpret_cast<PACKET_ZC_BROADCAST2*>( packet_buffer );
+ 
+ 	p->packetType = HEADER_ZC_BROADCAST2;
+@@ -9780,7 +9861,13 @@ void clif_specialeffect_remove( const block_list* bl_src, int32 effect, enum sen
+ /// Monster/NPC color chat [SnakeDrak] (ZC_NPC_CHAT).
+ /// 02c1 <packet len>.W <id>.L <color>.L <message>.?B
+ void clif_messagecolor_target(const block_list* bl, unsigned long color, const char *msg, bool rgb2bgr, enum send_target type, const map_session_data* sd) {
+-	uint16 msg_len = (uint16)(strlen(msg) + 1);
++	char cp949_msg[CHAT_SIZE_MAX - 12] = {};
++	const char* send_msg = msg;
++
++	if( map_name_utf8_to_cp949( msg, cp949_msg, sizeof(cp949_msg) ) )
++		send_msg = cp949_msg;
++
++	uint16 msg_len = (uint16)(strlen(send_msg) + 1);
+ 	uint8 buf[CHAT_SIZE_MAX];
+ 
+ 	nullpo_retv(bl);
+@@ -9797,7 +9884,7 @@ void clif_messagecolor_target(const block_list* bl, unsigned long color, const c
+ 	WBUFW(buf,2) = msg_len + 12;
+ 	WBUFL(buf,4) = bl->id;
+ 	WBUFL(buf,8) = color;
+-	memcpy(WBUFCP(buf,12), msg, msg_len);
++	memcpy(WBUFCP(buf,12), send_msg, msg_len);
+ 
+ 	clif_send(buf, WBUFW(buf,2), (sd == nullptr ? bl : &(*sd)), type);
+ }
+@@ -9949,7 +10036,9 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+ 				return;
+ 			}
+ 
+-			safestrncpy( packet.name, sd->status.name, NAME_LENGTH );
++			if( !map_name_utf8_to_cp949( sd->status.name, packet.name, sizeof(packet.name) ) ){
++                                safestrncpy( packet.name, sd->status.name, NAME_LENGTH );
++                        }
+ 
+ 			party_data *p = nullptr;
+ 
+@@ -10002,9 +10091,14 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+ 				case BL_PET:
+ 					safestrncpy(packet.name, static_cast<const pet_data*>(bl)->pet.name, NAME_LENGTH);
+ 					break;
+-				case BL_NPC:
+-					safestrncpy(packet.name, static_cast<const npc_data*>(bl)->name, NAME_LENGTH);
+-					break;
++                                case BL_NPC: {
++                                        const npc_data* nd = static_cast<const npc_data*>(bl);
++
++                                        if( !map_name_utf8_to_cp949( nd->name, packet.name, sizeof(packet.name) ) ){
++                                                safestrncpy( packet.name, nd->name, NAME_LENGTH );
++                                        }
++                                }
++                                        break;
+ 				case BL_ELEM:
+ 					safestrncpy(packet.name, static_cast<const s_elemental_data*>(bl)->db->name.c_str(), NAME_LENGTH);
+ 					break;
+@@ -10040,7 +10134,9 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+ 
+ 				packet.packet_id = HEADER_ZC_ACK_REQNAMEALL;
+ 				packet.gid = bl->id;
+-				safestrncpy( packet.name, md->name, NAME_LENGTH );
++				if( !map_name_utf8_to_cp949( md->name, packet.name, sizeof(packet.name) ) ){
++				        safestrncpy( packet.name, md->name, NAME_LENGTH );
++				}
+ 
+ 				char mobhp[50], *str_p = mobhp;
+ 
+@@ -10068,7 +10164,9 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+ 
+ 				packet.packet_id = HEADER_ZC_ACK_REQNAMEALL_NPC;
+ 				packet.gid = bl->id;
+-				safestrncpy(packet.name, md->name, NAME_LENGTH);
++				if( !map_name_utf8_to_cp949( md->name, packet.name, sizeof(packet.name) ) ){
++				        safestrncpy( packet.name, md->name, NAME_LENGTH );
++				}
+ 
+ #if PACKETVER_MAIN_NUM >= 20180207 || PACKETVER_RE_NUM >= 20171129 || PACKETVER_ZERO_NUM >= 20171130
+ 				const unit_data* ud = unit_bl2ud(bl);
+@@ -10446,6 +10544,7 @@ static bool clif_process_message(map_session_data* sd, bool whisperFormat, char*
+ 	uint16 packetLength, inputLength;
+ 	const char *input, *name, *message;
+ 	size_t nameLength, messageLength;
++        char cp949_name[NAME_LENGTH] = "";
+ 
+ 	fd = sd->fd;
+ 
+@@ -10487,7 +10586,11 @@ static bool clif_process_message(map_session_data* sd, bool whisperFormat, char*
+ 		// name and message are separated by ' : '
+ 		size_t separatorLength = strnlen( separator, NAME_LENGTH );
+ 
+-		nameLength = strnlen( sd->status.name, NAME_LENGTH - 1 ); // name length (w/o zero byte)
++                if( !map_name_utf8_to_cp949( sd->status.name, cp949_name, sizeof(cp949_name) ) ){
++                        safestrncpy( cp949_name, sd->status.name, NAME_LENGTH );
++                }
++
++		nameLength = strnlen( cp949_name, NAME_LENGTH - 1 ); // name length (w/o zero byte)
+ 		
+ 		// check if there's enough data provided
+ 		if( inputLength < nameLength + separatorLength + 1 ){
+@@ -10498,7 +10601,7 @@ static bool clif_process_message(map_session_data* sd, bool whisperFormat, char*
+ 		name = input;
+ 
+ 		// validate name
+-		if( strncmp( name, sd->status.name, nameLength ) || // the text must start with the speaker's name
++		if( strncmp( name, cp949_name, nameLength ) || // the text must start with the speaker's name
+ 			strncmp( name + nameLength, separator, separatorLength ) ) // followed by the separator
+ 		{
+ 			//Hacked message, or infamous "client desynch" issue where they pick one char while loading another.
+@@ -17878,6 +17981,15 @@ std::string clif_quest_string( std::shared_ptr<s_quest_objective> objective ){
+ 	return str;
+ }
+ 
++static void clif_quest_string_to_cp949( char* dst, size_t dst_size, const std::string& src ){
++	char cp949_text[NAME_LENGTH] = {};
++
++	if( map_name_utf8_to_cp949( src.c_str(), cp949_text, sizeof(cp949_text) ) )
++		safestrncpy( dst, cp949_text, dst_size );
++	else
++		safestrncpy( dst, src.c_str(), dst_size );
++}
++
+ /// Sends list of all quest states
+ /// 02b1 <packet len>.W <num>.L { <quest id>.L <active>.B }*num (ZC_ALL_QUEST_LIST)
+ /// 097a <packet len>.W <num>.L { <quest id>.L <active>.B <remaining time>.L <time>.L <count>.W { <mob_id>.L <killed>.W <total>.W <mob name>.24B }*count }*num (ZC_ALL_QUEST_LIST2)
+@@ -17949,9 +18061,9 @@ void clif_quest_send_list( const map_session_data* sd )
+ 				WFIFOW(fd, offset) = qi->objectives[j]->count;
+ 				offset += 2;
+ 				if (mob && qi->objectives[j]->mob_id > 0)
+-					safestrncpy(WFIFOCP(fd,offset), mob->jname.c_str(), NAME_LENGTH);
++					clif_quest_string_to_cp949( WFIFOCP(fd,offset), NAME_LENGTH, mob->jname );
+ 				else
+-					safestrncpy(WFIFOCP(fd,offset), clif_quest_string(qi->objectives[j]).c_str(), NAME_LENGTH);
++					clif_quest_string_to_cp949( WFIFOCP(fd,offset), NAME_LENGTH, clif_quest_string(qi->objectives[j]) );
+ 				offset += NAME_LENGTH;
+ 			}
+ 		}
+@@ -18007,9 +18119,9 @@ void clif_quest_send_mission( const map_session_data* sd )
+ 			WFIFOL(fd, i*104+22+j*30) = (mob ? qi->objectives[j]->mob_id : MOBID_PORING);
+ 			WFIFOW(fd, i*104+26+j*30) = sd->quest_log[i].count[j];
+ 			if (mob && qi->objectives[j]->mob_id > 0)
+-				safestrncpy(WFIFOCP(fd, i*104+28+j*30), mob->jname.c_str(), NAME_LENGTH);
++				clif_quest_string_to_cp949( WFIFOCP(fd, i*104+28+j*30), NAME_LENGTH, mob->jname );
+ 			else
+-				safestrncpy(WFIFOCP(fd, i*104+28+j*30), clif_quest_string(qi->objectives[j]).c_str(), NAME_LENGTH);
++				clif_quest_string_to_cp949( WFIFOCP(fd, i*104+28+j*30), NAME_LENGTH, clif_quest_string(qi->objectives[j]) );
+ 		}
+ 	}
+ 
+@@ -18067,9 +18179,9 @@ void clif_quest_add ( const map_session_data* sd, const quest *qd )
+ 		WFIFOW(fd, offset) = qd->count[i];
+ 		offset += 2;
+ 		if (mob && qi->objectives[i]->mob_id > 0)
+-			safestrncpy(WFIFOCP(fd,offset), mob->jname.c_str(), NAME_LENGTH);
++			clif_quest_string_to_cp949( WFIFOCP(fd,offset), NAME_LENGTH, mob->jname );
+ 		else
+-			safestrncpy(WFIFOCP(fd,offset), clif_quest_string(qi->objectives[i]).c_str(), NAME_LENGTH);
++			clif_quest_string_to_cp949( WFIFOCP(fd,offset), NAME_LENGTH, clif_quest_string(qi->objectives[i]) );
+ 		offset += NAME_LENGTH;
+ 	}
+ 
+@@ -20575,7 +20687,13 @@ void clif_showscript(const block_list* bl, const char* message, enum send_target
+ 	if(!message)
+ 		return;
+ 
+-	len = strlen(message)+1;
++	std::string cp949_message( strlen( message ) + 1, '\0' );
++        const char* send_message = message;
++
++        if( map_name_utf8_to_cp949( message, cp949_message.data(), cp949_message.size() ) )
++                send_message = cp949_message.c_str();
++
++        len = strlen(send_message)+1;
+ 
+ 	if( len > sizeof(buf)-8 ) {
+ 		ShowWarning("clif_showscript: Truncating too long message '%s' (len=%" PRIuPTR ").\n", message, len);
+@@ -20585,7 +20703,7 @@ void clif_showscript(const block_list* bl, const char* message, enum send_target
+ 	WBUFW(buf,0) = 0x8b3;
+ 	WBUFW(buf,2) = (uint16)(len+8);
+ 	WBUFL(buf,4) = bl->id;
+-	safestrncpy(WBUFCP(buf,8), message, len);
++	safestrncpy(WBUFCP(buf,8), send_message, len);
+ 	clif_send((unsigned char *) buf, WBUFW(buf,2), bl, flag);
+ }
+ 
+diff --git a/src/map/map.hpp b/src/map/map.hpp
+index d32f7524cc3233a1077cd553c59ff30d9aa1ca4d..72ed63c0875fb9ef854f2926e8ca7cee6cf5127d 100644
+--- a/src/map/map.hpp
++++ b/src/map/map.hpp
+@@ -482,7 +482,7 @@ struct spawn_data {
+ 		uint32 dynamic : 1; //Whether this data is indexed by a map's dynamic mob list
+ 		uint32 boss : 1; //0: Non-boss monster | 1: Boss monster
+ 	} state;
+-	char name[NAME_LENGTH], eventname[EVENT_NAME_LENGTH]; //Name/event
++	char name[MOB_NAME_LENGTH], eventname[EVENT_NAME_LENGTH]; //Name/event
+ 	char filepath[256];
+ };
+ 
+diff --git a/src/map/mob.cpp b/src/map/mob.cpp
+index c538909619374f735e90c2aba438e31c708d8599..4395dc796f2856c2645da386132d97eb8ae5fe52 100644
+--- a/src/map/mob.cpp
++++ b/src/map/mob.cpp
+@@ -476,7 +476,7 @@ mob_data* mob_spawn_dataset(struct spawn_data *data)
+ 	md->db = mob_db.find(md->mob_id);
+ 	if (data->level > 0)
+ 		md->level = data->level;
+-	memcpy(md->name, data->name, NAME_LENGTH);
++	memcpy(md->name, data->name, sizeof(md->name));
+ 	if (data->state.ai)
+ 		md->special_state.ai = data->state.ai;
+ 	if (data->state.size)
+@@ -1128,7 +1128,7 @@ int32 mob_spawn (mob_data *md)
+ 		md->mob_id = md->spawn->id;
+ 		status_set_viewdata(md, md->mob_id);
+ 		md->db = mob_db.find(md->mob_id);
+-		memcpy(md->name,md->spawn->name,NAME_LENGTH);
++		memcpy(md->name, md->spawn->name, sizeof(md->name));
+ 	}
+ 
+ 	if (md->spawn) { //Respawn data
+@@ -3833,9 +3833,9 @@ int32 mob_class_change (mob_data *md, int32 mob_id)
+ 	md->mob_id = mob_id;
+ 	md->db = mob_db.find(mob_id);
+ 	if (battle_config.override_mob_names==1)
+-		memcpy(md->name,md->db->name.c_str(),NAME_LENGTH);
++		safestrncpy(md->name, md->db->name.c_str(), sizeof(md->name));
+ 	else
+-		memcpy(md->name,md->db->jname.c_str(),NAME_LENGTH);
++		safestrncpy(md->name, md->db->jname.c_str(), sizeof(md->name));
+ 
+ 	status_change_end(md,SC_KEEPING); // End before calling status_calc_mob().
+ 	status_change_end(md,SC_BARRIER);
+@@ -5017,11 +5017,11 @@ uint64 MobDatabase::parseBodyNode(const ryml::NodeRef& node) {
+ 		if (!this->asString(node, "Name", name))
+ 			return 0;
+ 
+-		if (name.size() > NAME_LENGTH) {
+-			this->invalidWarning(node["Name"], "Name \"%s\" exceeds maximum of %d characters, capping...\n", name.c_str(), NAME_LENGTH - 1);
++		if (name.size() > MOB_NAME_LENGTH) {
++			this->invalidWarning(node["Name"], "Name \"%s\" exceeds maximum of %d characters, capping...\n", name.c_str(), MOB_NAME_LENGTH - 1);
+ 		}
+ 
+-		name.resize(NAME_LENGTH);
++		name.resize(MOB_NAME_LENGTH);
+ 		mob->name = name;
+ 	}
+ 
+@@ -5031,11 +5031,11 @@ uint64 MobDatabase::parseBodyNode(const ryml::NodeRef& node) {
+ 		if (!this->asString(node, "JapaneseName", name))
+ 			return 0;
+ 
+-		if (name.size() > NAME_LENGTH) {
+-			this->invalidWarning(node["JapaneseName"], "JapaneseName \"%s\" exceeds maximum of %d characters, capping...\n", name.c_str(), NAME_LENGTH - 1);
++		if (name.size() > MOB_NAME_LENGTH) {
++			this->invalidWarning(node["JapaneseName"], "JapaneseName \"%s\" exceeds maximum of %d characters, capping...\n", name.c_str(), MOB_NAME_LENGTH - 1);
+ 		}
+ 
+-		name.resize(NAME_LENGTH);
++		name.resize(MOB_NAME_LENGTH);
+ 		mob->jname = name;
+ 	} else if (!exists) {
+ 		mob->jname = mob->name;
+diff --git a/src/map/mob.hpp b/src/map/mob.hpp
+index 47e1a32e39d35c4bcf1cadaa68de594adb6501d7..127ed8a1cf30a9dbff87eca02e52be51b71f3d8e 100644
+--- a/src/map/mob.hpp
++++ b/src/map/mob.hpp
+@@ -341,7 +341,7 @@ struct mob_data : public block_list {
+ 	struct status_data status, *base_status; //Second one is in case of leveling up mobs, or tiny/large mobs.
+ 	status_change sc;
+ 	std::shared_ptr<s_mob_db> db;	//For quick data access (saves doing mob_db(md->mob_id) all the time) [Skotlex]
+-	char name[NAME_LENGTH];
++	char name[MOB_NAME_LENGTH];
+ 	struct s_specialState {
+ 		uint32 size : 2; //Small/Big monsters.
+ 		enum mob_ai ai; //Special ai for summoned monsters.
+diff --git a/src/map/script.cpp b/src/map/script.cpp
+index c05f24b04afdc890e6de930c7ffdce381119ea66..345d173da1924d04665a6bcc024f36b058334ee4 100644
+--- a/src/map/script.cpp
++++ b/src/map/script.cpp
+@@ -19912,7 +19912,7 @@ BUILDIN_FUNC(setunitname)
+ 				ShowWarning("buildin_setunitname: Error in finding object BL_MOB!\n");
+ 				return SCRIPT_CMD_FAILURE;
+ 			}
+-			safestrncpy(md->name, script_getstr(st, 3), NAME_LENGTH);
++			safestrncpy(md->name, script_getstr(st, 3), sizeof(md->name));
+ 			break;
+ 		case BL_HOM:
+ 			if (!hd) {
