@@ -37,6 +37,12 @@ korean-cp949-full.patch
 - 퀘스트 목표 문자열 CP949 처리
 - default_codepage: utf8mb4
 
+- 파티 / 길드 / 길드 직책 / 클랜명 CP949 처리
+
+- setunittitle 한글 호칭 표시
+
+- 긴 한글 호칭 UTF-8 내부 버퍼 확장 (UNIT_TITLE_LENGTH 64)
+
 ## 적용
 
 git apply --check korean-cp949-full.patch

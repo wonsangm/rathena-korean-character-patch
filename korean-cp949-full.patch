@@ -1,5 +1,5 @@
 diff --git a/conf/battle/monster.conf b/conf/battle/monster.conf
-index f1602659726b96c8218ae500f7ce41d5e86ebd28..d6c80cd3e5bf230a9b243c0e1b0cbbfbb86f8c89 100644
+index f16026597..d6c80cd3e 100644
 --- a/conf/battle/monster.conf
 +++ b/conf/battle/monster.conf
 @@ -120,7 +120,7 @@ monster_active_enable: yes
@@ -12,7 +12,7 @@ index f1602659726b96c8218ae500f7ce41d5e86ebd28..d6c80cd3e5bf230a9b243c0e1b0cbbfb
  // Monster damage delay rate (Note 2)
  // This affects the damage delay that is sent to the client and is the base value for the walk delay.
 diff --git a/conf/char_athena.conf b/conf/char_athena.conf
-index 726dd307799457494f5ae34d13f16a16fa70898d..61cd12b2ae557e67a4bdc408cdef119655f8cb5b 100644
+index 726dd3077..61cd12b2a 100644
 --- a/conf/char_athena.conf
 +++ b/conf/char_athena.conf
 @@ -157,7 +157,7 @@ name_ignoring_case: no
@@ -25,7 +25,7 @@ index 726dd307799457494f5ae34d13f16a16fa70898d..61cd12b2ae557e67a4bdc408cdef1196
  // Set the letters/symbols that you want use with the 'char_name_option' option.
  // Note: Don't add spaces unless you mean to add 'space' to the list.
 diff --git a/conf/inter_athena.conf b/conf/inter_athena.conf
-index c2e84994362f980b86fcd9764e4905004ef5b8ea..69c2dbe813d4bd000e3831accc2ad149533e4bfd 100644
+index c2e849943..69c2dbe81 100644
 --- a/conf/inter_athena.conf
 +++ b/conf/inter_athena.conf
 @@ -23,7 +23,7 @@ emblem_transparency_limit: 80
@@ -38,7 +38,7 @@ index c2e84994362f980b86fcd9764e4905004ef5b8ea..69c2dbe813d4bd000e3831accc2ad149
  // For IPs, ideally under linux, you want to use localhost instead of 127.0.0.1
  // Under windows, you want to use 127.0.0.1.  If you see a message like
 diff --git a/src/char/char.cpp b/src/char/char.cpp
-index 493819122c83103e4ad5d6fb2f166d11013ee4aa..ede1e558e67e446d4ce78307511e92a52fcd478e 100644
+index 493819122..ede1e558e 100644
 --- a/src/char/char.cpp
 +++ b/src/char/char.cpp
 @@ -11,6 +11,7 @@
@@ -94,7 +94,7 @@ index 493819122c83103e4ad5d6fb2f166d11013ee4aa..ede1e558e67e446d4ce78307511e92a5
  	info.Agi = (uint8)u16min( p.agi, UINT8_MAX );
  	info.Vit = (uint8)u16min( p.vit, UINT8_MAX );
 diff --git a/src/char/char_clif.cpp b/src/char/char_clif.cpp
-index 31960326610a1b739e9ab9f040d4e51f9eb1cab4..6774cb80b6a1298240863a6257e7695f522e8c76 100644
+index 319603266..6774cb80b 100644
 --- a/src/char/char_clif.cpp
 +++ b/src/char/char_clif.cpp
 @@ -8,6 +8,7 @@
@@ -152,21 +152,23 @@ index 31960326610a1b739e9ab9f040d4e51f9eb1cab4..6774cb80b6a1298240863a6257e7695f
  	hair_color = p->hair_color;
  	hair_style = p->hair_style;
 diff --git a/src/common/mmo.hpp b/src/common/mmo.hpp
-index 121f2b540857018a84b85d2e4ed40d873a3ecdac..660c6794b12a07ed6fe12bdb622ba5fbfc57be0b 100644
+index 121f2b540..83a0cdba3 100644
 --- a/src/common/mmo.hpp
 +++ b/src/common/mmo.hpp
-@@ -152,6 +152,9 @@ const t_itemid WEDDING_RING_F = 2635;
+@@ -152,6 +152,11 @@ const t_itemid WEDDING_RING_F = 2635;
  //For character names, title names, guilds, maps, etc.
  //Includes null-terminator as it is the length of the array.
  #define NAME_LENGTH (23 + 1)
 +// Monster names are stored internally as UTF-8 and may require more bytes
 +// than the client-side NAME_LENGTH before conversion to CP949.
 +#define MOB_NAME_LENGTH 64
++// Unit titles are stored internally as UTF-8 before CP949 conversion.
++#define UNIT_TITLE_LENGTH 64
  #define PASSWD_LENGTH (32 + 1)
  //NPC names can be longer than it's displayed on client (NAME_LENGTH).
  #define NPC_NAME_LENGTH 50
 diff --git a/src/map/clif.cpp b/src/map/clif.cpp
-index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f12614486ef5e7a9 100644
+index 83060544d..f3144e710 100644
 --- a/src/map/clif.cpp
 +++ b/src/map/clif.cpp
 @@ -10,6 +10,8 @@
@@ -421,7 +423,48 @@ index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f1261448
  
  			party_data *p = nullptr;
  
-@@ -10002,9 +10091,14 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+@@ -9957,22 +10046,27 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+ 				p = party_search( sd->status.party_id );
+ 			}
+ 
+-			// do not display party unless the player is also in a guild
+-			if( p && ( sd->guild || battle_config.display_party_name ) ){
+-				safestrncpy( packet.party_name, p->party.name, NAME_LENGTH );
+-			}
++// do not display party unless the player is also in a guild
++if( p && ( sd->guild || battle_config.display_party_name ) ){
++if( !map_name_utf8_to_cp949( p->party.name, packet.party_name, sizeof(packet.party_name) ) )
++safestrncpy( packet.party_name, p->party.name, sizeof(packet.party_name) );
++}
+ 
+-			if( sd->guild ){
+-				int32 position;
++if( sd->guild ){
++int32 position;
+ 
+-				// Will get the position of the guild the player is in
+-				position = guild_getposition(*sd);
++// Will get the position of the guild the player is in
++position = guild_getposition(*sd);
+ 
+-				safestrncpy( packet.guild_name, sd->guild->guild.name, NAME_LENGTH );
+-				safestrncpy( packet.position_name, sd->guild->guild.position[position].name, NAME_LENGTH );
+-			}else if( sd->clan ){
+-				safestrncpy( packet.position_name, sd->clan->name, NAME_LENGTH );
+-			}
++if( !map_name_utf8_to_cp949( sd->guild->guild.name, packet.guild_name, sizeof(packet.guild_name) ) )
++safestrncpy( packet.guild_name, sd->guild->guild.name, sizeof(packet.guild_name) );
++
++if( !map_name_utf8_to_cp949( sd->guild->guild.position[position].name, packet.position_name, sizeof(packet.position_name) ) )
++safestrncpy( packet.position_name, sd->guild->guild.position[position].name, sizeof(packet.position_name) );
++}else if( sd->clan ){
++if( !map_name_utf8_to_cp949( sd->clan->name, packet.position_name, sizeof(packet.position_name) ) )
++safestrncpy( packet.position_name, sd->clan->name, sizeof(packet.position_name) );
++}
+ 
+ #if PACKETVER_MAIN_NUM >= 20150225 || PACKETVER_RE_NUM >= 20141126 || defined( PACKETVER_ZERO )
+ 			packet.title_id = sd->status.title_id; // Title ID
+@@ -10002,9 +10096,14 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
  				case BL_PET:
  					safestrncpy(packet.name, static_cast<const pet_data*>(bl)->pet.name, NAME_LENGTH);
  					break;
@@ -439,7 +482,17 @@ index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f1261448
  				case BL_ELEM:
  					safestrncpy(packet.name, static_cast<const s_elemental_data*>(bl)->db->name.c_str(), NAME_LENGTH);
  					break;
-@@ -10040,7 +10134,9 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+@@ -10014,7 +10113,8 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+ 			const unit_data* ud = unit_bl2ud(bl);
+ 
+ 			if (ud != nullptr) {
+-				memcpy(packet.title, ud->title, NAME_LENGTH);
++				if( !map_name_utf8_to_cp949( ud->title, packet.title, sizeof(packet.title) ) )
++safestrncpy( packet.title, ud->title, sizeof(packet.title) );
+ 				packet.groupId = ud->group_id;
+ 			}
+ #endif
+@@ -10040,7 +10140,9 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
  
  				packet.packet_id = HEADER_ZC_ACK_REQNAMEALL;
  				packet.gid = bl->id;
@@ -450,7 +503,7 @@ index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f1261448
  
  				char mobhp[50], *str_p = mobhp;
  
-@@ -10068,7 +10164,9 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+@@ -10068,13 +10170,16 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
  
  				packet.packet_id = HEADER_ZC_ACK_REQNAMEALL_NPC;
  				packet.gid = bl->id;
@@ -461,7 +514,15 @@ index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f1261448
  
  #if PACKETVER_MAIN_NUM >= 20180207 || PACKETVER_RE_NUM >= 20171129 || PACKETVER_ZERO_NUM >= 20171130
  				const unit_data* ud = unit_bl2ud(bl);
-@@ -10446,6 +10544,7 @@ static bool clif_process_message(map_session_data* sd, bool whisperFormat, char*
+ 
+ 				if (ud != nullptr) {
+-					memcpy(packet.title, ud->title, NAME_LENGTH);
++					if( !map_name_utf8_to_cp949( ud->title, packet.title, sizeof(packet.title) ) )
++safestrncpy( packet.title, ud->title, sizeof(packet.title) );
+ 					packet.groupId = ud->group_id;
+ 				}
+ #endif
+@@ -10446,6 +10551,7 @@ static bool clif_process_message(map_session_data* sd, bool whisperFormat, char*
  	uint16 packetLength, inputLength;
  	const char *input, *name, *message;
  	size_t nameLength, messageLength;
@@ -469,7 +530,7 @@ index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f1261448
  
  	fd = sd->fd;
  
-@@ -10487,7 +10586,11 @@ static bool clif_process_message(map_session_data* sd, bool whisperFormat, char*
+@@ -10487,7 +10593,11 @@ static bool clif_process_message(map_session_data* sd, bool whisperFormat, char*
  		// name and message are separated by ' : '
  		size_t separatorLength = strnlen( separator, NAME_LENGTH );
  
@@ -482,7 +543,7 @@ index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f1261448
  		
  		// check if there's enough data provided
  		if( inputLength < nameLength + separatorLength + 1 ){
-@@ -10498,7 +10601,7 @@ static bool clif_process_message(map_session_data* sd, bool whisperFormat, char*
+@@ -10498,7 +10608,7 @@ static bool clif_process_message(map_session_data* sd, bool whisperFormat, char*
  		name = input;
  
  		// validate name
@@ -491,7 +552,7 @@ index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f1261448
  			strncmp( name + nameLength, separator, separatorLength ) ) // followed by the separator
  		{
  			//Hacked message, or infamous "client desynch" issue where they pick one char while loading another.
-@@ -17878,6 +17981,15 @@ std::string clif_quest_string( std::shared_ptr<s_quest_objective> objective ){
+@@ -17878,6 +17988,15 @@ std::string clif_quest_string( std::shared_ptr<s_quest_objective> objective ){
  	return str;
  }
  
@@ -507,7 +568,7 @@ index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f1261448
  /// Sends list of all quest states
  /// 02b1 <packet len>.W <num>.L { <quest id>.L <active>.B }*num (ZC_ALL_QUEST_LIST)
  /// 097a <packet len>.W <num>.L { <quest id>.L <active>.B <remaining time>.L <time>.L <count>.W { <mob_id>.L <killed>.W <total>.W <mob name>.24B }*count }*num (ZC_ALL_QUEST_LIST2)
-@@ -17949,9 +18061,9 @@ void clif_quest_send_list( const map_session_data* sd )
+@@ -17949,9 +18068,9 @@ void clif_quest_send_list( const map_session_data* sd )
  				WFIFOW(fd, offset) = qi->objectives[j]->count;
  				offset += 2;
  				if (mob && qi->objectives[j]->mob_id > 0)
@@ -519,7 +580,7 @@ index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f1261448
  				offset += NAME_LENGTH;
  			}
  		}
-@@ -18007,9 +18119,9 @@ void clif_quest_send_mission( const map_session_data* sd )
+@@ -18007,9 +18126,9 @@ void clif_quest_send_mission( const map_session_data* sd )
  			WFIFOL(fd, i*104+22+j*30) = (mob ? qi->objectives[j]->mob_id : MOBID_PORING);
  			WFIFOW(fd, i*104+26+j*30) = sd->quest_log[i].count[j];
  			if (mob && qi->objectives[j]->mob_id > 0)
@@ -531,7 +592,7 @@ index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f1261448
  		}
  	}
  
-@@ -18067,9 +18179,9 @@ void clif_quest_add ( const map_session_data* sd, const quest *qd )
+@@ -18067,9 +18186,9 @@ void clif_quest_add ( const map_session_data* sd, const quest *qd )
  		WFIFOW(fd, offset) = qd->count[i];
  		offset += 2;
  		if (mob && qi->objectives[i]->mob_id > 0)
@@ -543,7 +604,7 @@ index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f1261448
  		offset += NAME_LENGTH;
  	}
  
-@@ -20575,7 +20687,13 @@ void clif_showscript(const block_list* bl, const char* message, enum send_target
+@@ -20575,7 +20694,13 @@ void clif_showscript(const block_list* bl, const char* message, enum send_target
  	if(!message)
  		return;
  
@@ -558,7 +619,7 @@ index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f1261448
  
  	if( len > sizeof(buf)-8 ) {
  		ShowWarning("clif_showscript: Truncating too long message '%s' (len=%" PRIuPTR ").\n", message, len);
-@@ -20585,7 +20703,7 @@ void clif_showscript(const block_list* bl, const char* message, enum send_target
+@@ -20585,7 +20710,7 @@ void clif_showscript(const block_list* bl, const char* message, enum send_target
  	WBUFW(buf,0) = 0x8b3;
  	WBUFW(buf,2) = (uint16)(len+8);
  	WBUFL(buf,4) = bl->id;
@@ -568,7 +629,7 @@ index 83060544d6912bb8f6f03a7fd65d8aa6880257d2..f4c53453452e3886ed8ae381f1261448
  }
  
 diff --git a/src/map/map.hpp b/src/map/map.hpp
-index d32f7524cc3233a1077cd553c59ff30d9aa1ca4d..72ed63c0875fb9ef854f2926e8ca7cee6cf5127d 100644
+index d32f7524c..72ed63c08 100644
 --- a/src/map/map.hpp
 +++ b/src/map/map.hpp
 @@ -482,7 +482,7 @@ struct spawn_data {
@@ -581,7 +642,7 @@ index d32f7524cc3233a1077cd553c59ff30d9aa1ca4d..72ed63c0875fb9ef854f2926e8ca7cee
  };
  
 diff --git a/src/map/mob.cpp b/src/map/mob.cpp
-index c538909619374f735e90c2aba438e31c708d8599..4395dc796f2856c2645da386132d97eb8ae5fe52 100644
+index c53890961..48be15418 100644
 --- a/src/map/mob.cpp
 +++ b/src/map/mob.cpp
 @@ -476,7 +476,7 @@ mob_data* mob_spawn_dataset(struct spawn_data *data)
@@ -644,8 +705,22 @@ index c538909619374f735e90c2aba438e31c708d8599..4395dc796f2856c2645da386132d97eb
  		mob->jname = name;
  	} else if (!exists) {
  		mob->jname = mob->name;
+@@ -5436,10 +5436,10 @@ uint64 MobDatabase::parseBodyNode(const ryml::NodeRef& node) {
+ 		if (!this->asString(node, "Title", title))
+ 			return 0;
+ 
+-		if (title.size() > NAME_LENGTH)
+-			this->invalidWarning(node["Title"], "Title \"%s\" exceeds maximum of %d characters, capping...\n", title.c_str(), NAME_LENGTH - 1);
++		if (title.size() > UNIT_TITLE_LENGTH)
++			this->invalidWarning(node["Title"], "Title \"%s\" exceeds maximum of %d characters, capping...\n", title.c_str(), UNIT_TITLE_LENGTH - 1);
+ 
+-		title.resize(NAME_LENGTH);
++		title.resize(UNIT_TITLE_LENGTH);
+ 		mob->title = title;
+ 	}
+ 
 diff --git a/src/map/mob.hpp b/src/map/mob.hpp
-index 47e1a32e39d35c4bcf1cadaa68de594adb6501d7..127ed8a1cf30a9dbff87eca02e52be51b71f3d8e 100644
+index 47e1a32e3..127ed8a1c 100644
 --- a/src/map/mob.hpp
 +++ b/src/map/mob.hpp
 @@ -341,7 +341,7 @@ struct mob_data : public block_list {
@@ -658,7 +733,7 @@ index 47e1a32e39d35c4bcf1cadaa68de594adb6501d7..127ed8a1cf30a9dbff87eca02e52be51
  		uint32 size : 2; //Small/Big monsters.
  		enum mob_ai ai; //Special ai for summoned monsters.
 diff --git a/src/map/script.cpp b/src/map/script.cpp
-index c05f24b04afdc890e6de930c7ffdce381119ea66..345d173da1924d04665a6bcc024f36b058334ee4 100644
+index c05f24b04..acc08034e 100644
 --- a/src/map/script.cpp
 +++ b/src/map/script.cpp
 @@ -19912,7 +19912,7 @@ BUILDIN_FUNC(setunitname)
@@ -670,3 +745,58 @@ index c05f24b04afdc890e6de930c7ffdce381119ea66..345d173da1924d04665a6bcc024f36b0
  			break;
  		case BL_HOM:
  			if (!hd) {
+@@ -19958,7 +19958,7 @@ BUILDIN_FUNC(setunittitle)
+ 		return SCRIPT_CMD_FAILURE;
+ 	}
+ 
+-	safestrncpy(ud->title, script_getstr(st, 3), NAME_LENGTH);
++	safestrncpy(ud->title, script_getstr(st, 3), sizeof(ud->title));
+ 	clif_name_area(bl);
+ 	return SCRIPT_CMD_SUCCESS;
+ }
+@@ -27859,7 +27859,7 @@ BUILDIN_FUNC(mesemotion){
+ 	// Validates emotion range
+ 	if (id < ET_SURPRISE || id >= ET_MAX) {
+ 		ShowError("buildin_mesemotion: Emotion ID %d is invalid.\n", id);
+-		st->state = END;
++		st->state = END;
+ 		return SCRIPT_CMD_FAILURE;
+ 	}
+ 
+@@ -27870,8 +27870,8 @@ BUILDIN_FUNC(mesemotion){
+ 	return SCRIPT_CMD_SUCCESS;
+ #else
+ 	ShowError( "buildin_mesemotion: This command requires PACKETVER 2023-03-02 or newer.\n" );
+-	st->state = END;
+-	return SCRIPT_CMD_FAILURE;
++	st->state = END;
++	return SCRIPT_CMD_FAILURE;
+ #endif
+ }
+ 
+diff --git a/src/map/status.cpp b/src/map/status.cpp
+index 87e0d4196..9feb3dad7 100644
+--- a/src/map/status.cpp
++++ b/src/map/status.cpp
+@@ -2783,7 +2783,7 @@ int32 status_calc_mob_(mob_data* md, uint8 opt)
+ 			;
+ 		else
+ 			md->level = md->db->lv;
+-		safestrncpy(md->ud.title, md->db->title.c_str(), NAME_LENGTH);
++		safestrncpy(md->ud.title, md->db->title.c_str(), sizeof(md->ud.title));
+ 		md->damagetaken = md->db->damagetaken;
+ 		md->ud.group_id = md->db->group_id;
+ 	}
+diff --git a/src/map/unit.hpp b/src/map/unit.hpp
+index 578922a8a..52a211d70 100644
+--- a/src/map/unit.hpp
++++ b/src/map/unit.hpp
+@@ -62,7 +62,7 @@ struct unit_data {
+ 		bool force_walk; ///< Used with script commands unitwalk/unitwalkto. Disables monster idle and random walk.
+ 	} state;
+ 	char walk_done_event[EVENT_NAME_LENGTH];
+-	char title[NAME_LENGTH];
++	char title[UNIT_TITLE_LENGTH];
+ 	int32 group_id;
+ 
+ 	std::vector<int32> shadow_scar_timer;
