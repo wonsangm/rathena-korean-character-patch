@@ -168,7 +168,7 @@ index 121f2b540..83a0cdba3 100644
  //NPC names can be longer than it's displayed on client (NAME_LENGTH).
  #define NPC_NAME_LENGTH 50
 diff --git a/src/map/clif.cpp b/src/map/clif.cpp
-index 83060544d..f3144e710 100644
+index 83060544d..4276bfff8 100644
 --- a/src/map/clif.cpp
 +++ b/src/map/clif.cpp
 @@ -10,6 +10,8 @@
@@ -423,47 +423,34 @@ index 83060544d..f3144e710 100644
  
  			party_data *p = nullptr;
  
-@@ -9957,22 +10046,27 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
- 				p = party_search( sd->status.party_id );
+@@ -9959,7 +10048,8 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+ 
+ 			// do not display party unless the player is also in a guild
+ 			if( p && ( sd->guild || battle_config.display_party_name ) ){
+-				safestrncpy( packet.party_name, p->party.name, NAME_LENGTH );
++				if( !map_name_utf8_to_cp949( p->party.name, packet.party_name, sizeof(packet.party_name) ) )
++					safestrncpy( packet.party_name, p->party.name, sizeof(packet.party_name) );
  			}
  
--			// do not display party unless the player is also in a guild
--			if( p && ( sd->guild || battle_config.display_party_name ) ){
--				safestrncpy( packet.party_name, p->party.name, NAME_LENGTH );
--			}
-+// do not display party unless the player is also in a guild
-+if( p && ( sd->guild || battle_config.display_party_name ) ){
-+if( !map_name_utf8_to_cp949( p->party.name, packet.party_name, sizeof(packet.party_name) ) )
-+safestrncpy( packet.party_name, p->party.name, sizeof(packet.party_name) );
-+}
- 
--			if( sd->guild ){
--				int32 position;
-+if( sd->guild ){
-+int32 position;
- 
--				// Will get the position of the guild the player is in
--				position = guild_getposition(*sd);
-+// Will get the position of the guild the player is in
-+position = guild_getposition(*sd);
+ 			if( sd->guild ){
+@@ -9968,10 +10058,14 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
+ 				// Will get the position of the guild the player is in
+ 				position = guild_getposition(*sd);
  
 -				safestrncpy( packet.guild_name, sd->guild->guild.name, NAME_LENGTH );
 -				safestrncpy( packet.position_name, sd->guild->guild.position[position].name, NAME_LENGTH );
--			}else if( sd->clan ){
--				safestrncpy( packet.position_name, sd->clan->name, NAME_LENGTH );
--			}
-+if( !map_name_utf8_to_cp949( sd->guild->guild.name, packet.guild_name, sizeof(packet.guild_name) ) )
-+safestrncpy( packet.guild_name, sd->guild->guild.name, sizeof(packet.guild_name) );
++				if( !map_name_utf8_to_cp949( sd->guild->guild.name, packet.guild_name, sizeof(packet.guild_name) ) )
++					safestrncpy( packet.guild_name, sd->guild->guild.name, sizeof(packet.guild_name) );
 +
-+if( !map_name_utf8_to_cp949( sd->guild->guild.position[position].name, packet.position_name, sizeof(packet.position_name) ) )
-+safestrncpy( packet.position_name, sd->guild->guild.position[position].name, sizeof(packet.position_name) );
-+}else if( sd->clan ){
-+if( !map_name_utf8_to_cp949( sd->clan->name, packet.position_name, sizeof(packet.position_name) ) )
-+safestrncpy( packet.position_name, sd->clan->name, sizeof(packet.position_name) );
-+}
++				if( !map_name_utf8_to_cp949( sd->guild->guild.position[position].name, packet.position_name, sizeof(packet.position_name) ) )
++					safestrncpy( packet.position_name, sd->guild->guild.position[position].name, sizeof(packet.position_name) );
+ 			}else if( sd->clan ){
+-				safestrncpy( packet.position_name, sd->clan->name, NAME_LENGTH );
++				if( !map_name_utf8_to_cp949( sd->clan->name, packet.position_name, sizeof(packet.position_name) ) )
++					safestrncpy( packet.position_name, sd->clan->name, sizeof(packet.position_name) );
+ 			}
  
  #if PACKETVER_MAIN_NUM >= 20150225 || PACKETVER_RE_NUM >= 20141126 || defined( PACKETVER_ZERO )
- 			packet.title_id = sd->status.title_id; // Title ID
 @@ -10002,9 +10096,14 @@ void clif_name( const block_list* src, const block_list* bl, send_target target
  				case BL_PET:
  					safestrncpy(packet.name, static_cast<const pet_data*>(bl)->pet.name, NAME_LENGTH);
@@ -488,7 +475,7 @@ index 83060544d..f3144e710 100644
  			if (ud != nullptr) {
 -				memcpy(packet.title, ud->title, NAME_LENGTH);
 +				if( !map_name_utf8_to_cp949( ud->title, packet.title, sizeof(packet.title) ) )
-+safestrncpy( packet.title, ud->title, sizeof(packet.title) );
++					safestrncpy( packet.title, ud->title, sizeof(packet.title) );
  				packet.groupId = ud->group_id;
  			}
  #endif
@@ -518,7 +505,7 @@ index 83060544d..f3144e710 100644
  				if (ud != nullptr) {
 -					memcpy(packet.title, ud->title, NAME_LENGTH);
 +					if( !map_name_utf8_to_cp949( ud->title, packet.title, sizeof(packet.title) ) )
-+safestrncpy( packet.title, ud->title, sizeof(packet.title) );
++						safestrncpy( packet.title, ud->title, sizeof(packet.title) );
  					packet.groupId = ud->group_id;
  				}
  #endif
