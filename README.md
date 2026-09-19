@@ -31,6 +31,7 @@ korean-cp949-full.patch
 - NPC 머리 위 한글 이름
 - 긴 NPC 이름 안전 처리
 - mes / select / menu
+- NPC 문자열 입력(input) CP949 → UTF-8 변환
 - message / dispbottom / npctalk
 - announce / mapannounce / areaannounce
 - showscript
